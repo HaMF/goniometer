@@ -6,28 +6,45 @@
 
 #define HOST "localhost"
 #define PORT 4223
-#define UID "XYZ" // Change to your UID
+#define IO4_UID "XYZ" // Change to your UID
+#define STEPPER_UID "XYZ" // Change to your UID
 
 int main() {
     // Create IP connection to brickd
     IPConnection ipcon;
     if(ipcon_create(&ipcon, HOST, PORT) < 0) {
-        fprintf(stderr, "Could not create connection\n");
+        fprintf(stderr, "Could not create IP connection to brickd\n");
         exit(1);
     }
 
-    // Create device object
+    // Create IO4 object
     IO4 io;
-    io4_create(&io, UID); 
+    io4_create(&io, IO4_UID); 
 
-    // Add device to IP connection
+    // Add IO4 to IP connection
     if(ipcon_add_device(&ipcon, &io) < 0) {
-        fprintf(stderr, "Could not connect to Bricklet\n");
+        fprintf(stderr, "Could not connect to IO4-Bricklet\n");
         exit(1);
     }
-    // Don't use device before it is added to a connection
+    
+    // Create stepper object
+    Stepper stepper;
+    stepper_create(&stepper, STEPPER_UID); 
 
-// Create and add stepper to IP connection
+    // Add stepper to IP connection
+    if(ipcon_add_device(&ipcon, &stepper) < 0) {
+      	fprintf(stderr, "Could not connect to Stepper-Brick\n");
+      	exit(1);
+    }
+    stepper_set_motor_current(&stepper, 800); // 800mA
+    stepper_set_step_mode(&stepper, 8); // 1/8 step mode
+    stepper_set_max_velocity(&stepper, 2000); // Velocity 2000 steps/s
+    
+    // Slow acceleration (500 steps/s^2), 
+    // Fast deacceleration (5000 steps/s^2)
+    stepper_set_speed_ramping(&stepper, 500, 5000);
+  	stepper_enable(&stepper);
+    stepper_set_steps(&stepper, 20); //this advances
 
 // Configure PIN as input
 // Register callbacks
