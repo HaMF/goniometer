@@ -1,10 +1,10 @@
-    CC     = gcc
-    CFLAGS = -pthread
+    CC     = g++
+    CFLAGS = -pthread -lpdcurses
  
     all: goinometer
  
     goinometer: brick_stepper.c bricklet_io4.c ip_connection.c
-	$(CC) $(CFLAGS) -o $@ $^ $@.c
+	$(CC) -o $@ $^ $@.c $(CFLAGS)
  
     clean: FRC
 	rm -f goinometer goinometer.o
