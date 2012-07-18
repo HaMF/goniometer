@@ -1,5 +1,5 @@
     CC     = g++
-    CFLAGS = -pthread -lpdcurses
+    CFLAGS = -pthread -lncurses
  
     all: goinometer
  
