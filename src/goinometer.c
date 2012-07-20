@@ -15,9 +15,9 @@ Purpose of the setup is to let a stepper motor advance a certain amount of steps
 This (and some mechanical parts) form an automatic goinometer for an Brucker EPR spectrometer.
 
 ROADMAP:
-  o Record positions for every TTL pulse in sensible, simple file format
+  + Record positions for every TTL pulse in sensible, simple file format
   + Add commandline parameters to set gear ratio, step size, …
-  o Use sensible folder structure and improve makefile
+  + Use sensible folder structure and improve makefile
   + Use time of TTL pulse to determine step width
   o Regain platform independance (move away from ncurses)
   o Add and LCD, pysical buttons for home and step size and implement a stand-alone solution (maybe…)
@@ -245,11 +245,13 @@ int main(int argc, char **argv) {
     }
     printw("Gear ratio is set to %f \n", gear_ratio);
     printw("Waiting for TTL interrupts.\n");
-    printw(" Press h to go to the home position.\n Press H to set current position as home.\n Press a to advance.\n Press q to quit and display statistics\n");    
-    
+    printw(" Press h to go to the home position.\n Press H to set current position as home.\n Press a to advance (A backwards).\n Press q to quit and display statistics\n");    
+
     while((c = getch()) != 'q') {
         if(c=='a')
             advance(nStepsPerInterrupt);
+        if(c=='A')
+            advance(-nStepsPerInterrupt);
         if(c=='h')  
             go_home();
         if(c=='H')  
