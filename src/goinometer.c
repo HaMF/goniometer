@@ -42,17 +42,36 @@ ROADMAP:
 
 Stepper stepper;
 IO4 io;
-int nSteps = 0;
-int nStepsPerInterrupt; // default is set when parsing arguments
-float gear_ratio = 2; // gear ratio > 1 means motor gear has less teeth
+
+int nSteps = 0;         // number of performed steps since last home position
+int nStepsPerInterrupt; // default is set to an equivalent of 5deg when parsing arguments
+float gear_ratio = 2;   // gear ratio > 1 means motor gear has less teeth
+float steps_per_revolution = 200;  // 200 -> 1 full step = 1.8 deg
+int step_mode = 1;	// perform 1/1,1/2,1/4 or 1/8 steps. 1/8 is highest precission but lowest torque
+
 int dynamic_flag, record_flag;
 int last_value_mask;
 int last_interrupt_time_pin0 = 0;
 
+
+int angle2steps(float angle) {
+    int steps = angle * steps_per_revolution / 360 * step_mode * gear_ratio;
+
+    return steps;
+}
+
+float steps2angle(int steps) {
+    float angle = steps / steps_per_revolution * 360 / step_mode / gear_ratio;
+        
+    return angle;
+}
+
+
 void print_stats() {
-    printw("\rNumber of steps performed: %3d (%6.2fdeg)", nSteps, ((float)nSteps)/gear_ratio);
+    printw("\rNumber of steps performed: %3d (%6.2fdeg)", nSteps, steps2angle(nSteps));
     fflush(stdout);
 }
+
 
 bool is_motor_ready() {
     int32_t rem_steps = 0;
@@ -82,7 +101,7 @@ void go_home() {
     if( ! is_motor_ready())
       return;
       
-    printw("\rGoing home from position %.2fdeg ...\n", ((float)nSteps)/gear_ratio);
+    printw("\rGoing home from position %.2fdeg ...\n", steps2angle(nSteps));
     stepper_set_steps(&stepper, -nSteps);
     nSteps = 0;
     
@@ -91,7 +110,7 @@ void go_home() {
 
 
 void set_home() { 
-    printw("\rSet current position (%.2fdeg) as new home ...\n", ((float)nSteps)/gear_ratio);
+    printw("\rSet current position (%.2fdeg) as new home ...\n", steps2angle(nSteps));
     nSteps = 0;
     
     print_stats();
@@ -106,7 +125,7 @@ void dispatch_interrupts(uint8_t interrupt_mask, uint8_t value_mask) {
             if( ! dynamic_flag) {
                 advance(nStepsPerInterrupt);
             } else if(last_interrupt_time_pin0 != 0) {
-                advance((interrupt_time-last_interrupt_time_pin0)*gear_ratio/10.);
+                advance(angle2steps((interrupt_time-last_interrupt_time_pin0)/10.));
             }
         }
         last_interrupt_time_pin0 = interrupt_time;
@@ -122,6 +141,8 @@ void display_usage() {
     printf("Command line arguments:\n");
     printf("    -a,  --angle       Angle by wich motor advances on interrupt (default: 5)\n");
     printf("    -g,  --gear-ratio  Gear ratio between motor and sample rod (default: 2)\n");
+    printf("    -s,  --steps-per-revolution Number of full-width steps needed for one revolution of the motor rod (default:200)\n");
+    printf("    -m,  --step-mode   Perform 1/n steps. Note 1/1 steps give the biggest torque. (n = (1,2,4,8); default: 1)\n");
     printf("    -d,  --dynamic     Dynamic mode: --angle is ignored and instead TTL pulse length is used. 10ms = 0.1deg\n");
     printf("    -r,  --record      Record the angular position after every interrupt\n");
 }
@@ -140,10 +161,12 @@ void parse_arguments(int argc, char **argv) {
            {"record",     no_argument, &record_flag,  1},
            {"angle",      required_argument, NULL, 'a'},
            {"gear-ratio", required_argument, NULL, 'g'},
+           {"steps-per-revolution", required_argument, NULL, 's'},
+           {"step-mode",  required_argument, NULL, 'm'},
            {NULL, 0, NULL, 0}
          };
 
-       c = getopt_long (argc, argv, "dra:g:?h",
+       c = getopt_long (argc, argv, "dra:g:s:m:?h",
                         long_options, &option_index);
 
        if (c == -1)
@@ -154,20 +177,41 @@ void parse_arguments(int argc, char **argv) {
        switch (c)
          {
          case 'a':
-           if ( ! strtod(optarg, NULL) )
+           if( ! strtod(optarg, NULL) )
            {
-             printf ("option -a requires a double as value\n");
+             printf ("option -a requires a float as value\n");
              exit(1);
            }
            avalue = strtod(optarg, NULL); // nStepsPerInterrupt is set later to make sure gear_ratio is already set
            break;
          case 'g':
-           if ( ! strtod(optarg, NULL) )
+           if( ! strtod(optarg, NULL) )
            {
-             printf ("option -g requires a double as value\n");
+             printf ("option -g requires a float as value\n");
              exit(1);
            }
            gear_ratio = strtod(optarg, NULL);
+           break;
+         case 's':
+           if( ! strtod(optarg, NULL) )
+           {
+             printf ("option -s requires a float as value\n");
+             exit(1);
+           }
+           steps_per_revolution = strtod(optarg, NULL);
+           break;
+         case 'm':
+           if( ! strtod(optarg, NULL) )
+           {
+             printf ("option -m requires an integer as value\n");
+             exit(1);
+           }
+           step_mode = strtod(optarg, NULL);
+           if ( step_mode != 1 && step_mode != 2 && step_mode != 4 && step_mode != 8)
+           {
+               printf("step-mode can only be 1,2,4 or 8 (resp 1, 1/2, 1/4 and 1/8 steps)\n");
+               exit(1);
+           }
            break;
          case 'd':
            dynamic_flag = 1;
@@ -184,7 +228,7 @@ void parse_arguments(int argc, char **argv) {
          }
       }
           
-    nStepsPerInterrupt = avalue * gear_ratio;
+    nStepsPerInterrupt = angle2steps(avalue);
 }
 
 
@@ -218,7 +262,7 @@ int main(int argc, char **argv) {
     }
 
     // Configure stepper driver
-    stepper_set_motor_current(&stepper, 800); // 800mA
+    stepper_set_motor_current(&stepper, 750); // 750mA
     stepper_set_step_mode(&stepper, 8); // 1/8 step mode
     stepper_set_max_velocity(&stepper, 2000); // Velocity 2000 steps/s
     stepper_set_speed_ramping(&stepper, 500, 500); // Slow acceleration & deacelleration (500 steps/s^2),     
@@ -241,7 +285,7 @@ int main(int argc, char **argv) {
         printw("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
         printw(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
     } else {
-        printw("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, (float)nStepsPerInterrupt/gear_ratio);
+        printw("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
     }
     printw("Gear ratio is set to %f \n", gear_ratio);
     printw("Waiting for TTL interrupts.\n");
