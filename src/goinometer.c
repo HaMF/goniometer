@@ -19,7 +19,7 @@ ROADMAP:
   + Add commandline parameters to set gear ratio, step size, …
   + Use sensible folder structure and improve makefile
   + Use time of TTL pulse to determine step width
-  o Regain platform independance (move away from ncurses)
+  + Regain platform independance (move away from ncurses)
   o Add and LCD, pysical buttons for home and step size and implement a stand-alone solution (maybe…)
   o check for integer overflows on interrupts (unlikely to occur but who knows)
 */
@@ -27,7 +27,6 @@ ROADMAP:
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ncurses.h>
 #include <unistd.h>
 #include <getopt.h>
 
@@ -68,7 +67,7 @@ float steps2angle(int steps) {
 
 
 void print_stats() {
-    printw("\rNumber of steps performed: %3d (%6.2fdeg)", nSteps, steps2angle(nSteps));
+    printf("\rNumber of steps performed: %3d (%6.2fdeg)", nSteps, steps2angle(nSteps));
     fflush(stdout);
 }
 
@@ -77,7 +76,7 @@ bool is_motor_ready() {
     int32_t rem_steps = 0;
     stepper_get_remaining_steps(&stepper, &rem_steps) ;
     if(rem_steps != 0) {
-        printw("\rInterrupt request ignored because motor was still running\n");
+        printf("\rInterrupt request ignored because motor was still running\n");
         print_stats();
         return false;
     } else {
@@ -101,7 +100,7 @@ void go_home() {
     if( ! is_motor_ready())
       return;
       
-    printw("\rGoing home from position %.2fdeg ...\n", steps2angle(nSteps));
+    printf("\rGoing home from position %.2fdeg ...\n", steps2angle(nSteps));
     stepper_set_steps(&stepper, -nSteps);
     nSteps = 0;
     
@@ -110,7 +109,7 @@ void go_home() {
 
 
 void set_home() { 
-    printw("\rSet current position (%.2fdeg) as new home ...\n", steps2angle(nSteps));
+    printf("\rSet current position (%.2fdeg) as new home ...\n", steps2angle(nSteps));
     nSteps = 0;
     
     print_stats();
@@ -250,7 +249,7 @@ int main(int argc, char **argv) {
     // Add IO4 to IP connection
     if(ipcon_add_device(&ipcon, &io) < 0) {
         fprintf(stderr, "Could not connect to IO4 bricklet\n");
-//        exit(1);
+        exit(1);
     }
     
     // Create stepper-device object
@@ -258,7 +257,7 @@ int main(int argc, char **argv) {
     // Add device to IP connection
     if(ipcon_add_device(&ipcon, &stepper) < 0) {
         fprintf(stderr, "Could not connect to stepper brick\n");
-//        exit(1);
+        exit(1);
     }
 
     // Configure stepper driver
@@ -273,25 +272,21 @@ int main(int argc, char **argv) {
   	// io4_set_interrupt(&io, 1 << 1); // home button goes on pin 1
   	// io4_set_interrupt(&io, 1 << 2); // step size button goes on pin 2
 
-	  // Register callback for interrupts
-	  io4_register_callback(&io, IO4_CALLBACK_INTERRUPT, (void*)dispatch_interrupts);
+    // Register callback for interrupts
+    io4_register_callback(&io, IO4_CALLBACK_INTERRUPT, (void*)dispatch_interrupts);
 
-    // Everything set. Lets use ncurses to display output and inputs nicely
-    initscr();
-    clear();
-    noecho();
     
     if(dynamic_flag) {
-        printw("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
-        printw(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
+        printf("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
+        printf(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
     } else {
-        printw("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
+        printf("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
     }
-    printw("Gear ratio is set to %f \n", gear_ratio);
-    printw("Waiting for TTL interrupts.\n");
-    printw(" Press h to go to the home position.\n Press H to set current position as home.\n Press a to advance (A backwards).\n Press q to quit and display statistics\n");    
+    printf("Gear ratio is set to %f \n", gear_ratio);
+    printf("Waiting for interrupts on pin 0.\n");
+    printf(" Press h<enter> to go to the home position.\n Press H<enter> to set current position as home.\n Press a<enter> to advance (A backwards).\n Press q<enter> to quit and display statistics\n");    
 
-    while((c = getch()) != 'q') {
+    while((c = getchar()) != 'q') {
         if(c=='a')
             advance(nStepsPerInterrupt);
         if(c=='A')
@@ -304,10 +299,7 @@ int main(int argc, char **argv) {
     
     // Disconnect from brickd
     ipcon_destroy(&ipcon);
-    
-    endwin();
-        
-    printf("\rNumber of steps performed: %3d (%6.2fdeg)\n", nSteps, ((float)nSteps)/gear_ratio);
+
     fflush(stdout);
     return 0;
 }
