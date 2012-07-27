@@ -8,11 +8,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 */
 
 /* 
-This is a simple script that is intended to be used with the tinkerforge (http://tinkerforge.com) stepper brick and the IO4 bricklet.
+This is a simple script that is intended to be used with the tinkerforge
+(http://tinkerforge.com) stepper brick and the IO4 bricklet.
 
-Purpose of the setup is to let a stepper motor advance a certain amount of steps everytime a TTL pulse is registered at pin 0 of the IO4 bricklet. In addition to that the current position is registered as No. of steps and angle (using a specified gear ratio). Furthermore, one can set and return to a "home" position.
+  Purpose of the setup is to let a stepper motor advance a certain amount
+of steps everytime a TTL pulse is registered at pin 0 of the IO4 bricklet.
+In addition to that the current position is registered as No. of steps and
+angle (using a specified gear ratio). Furthermore, one can set and return
+to a "home" position.
 
-This (and some mechanical parts) form an automatic goinometer for an Brucker EPR spectrometer.
+  This (and some mechanical parts) form an automatic goinometer for an EPR-
+spectrometer.
 
 ROADMAP:
   + Record positions for every TTL pulse in sensible, simple file format
@@ -20,8 +26,10 @@ ROADMAP:
   + Use sensible folder structure and improve makefile
   + Use time of TTL pulse to determine step width
   + Regain platform independance (move away from ncurses)
-  o Add and LCD, pysical buttons for home and step size and implement a stand-alone solution (maybe…)
-  o check for integer overflows on interrupts (unlikely to occur but who knows)
+  o Add and LCD, pysical buttons for home and step size and implement a 
+    stand-alone solution (maybe…)
+  o check for integer overflows on interrupts (unlikely to occur but who 
+    knows)
 */
 
 #include <ctype.h>
@@ -118,19 +126,16 @@ void set_home() {
 
 void dispatch_interrupts(uint8_t interrupt_mask, uint8_t value_mask) {
     int interrupt_time = time(NULL);
-    if((1<<0) & interrupt_mask) {
-        // interrupt on pin 0 -> advance if pin is high
-        if(interrupt_mask & value_mask == 1) {                
+    if((1<<0) & interrupt_mask) { // interrupt on pin 0
+        if(interrupt_mask & value_mask == 1) { // pin 0 is high
             if( ! dynamic_flag) {
                 advance(nStepsPerInterrupt);
-            } else if(last_interrupt_time_pin0 != 0) {
-                advance(angle2steps((interrupt_time-last_interrupt_time_pin0)/10.));
             }
+        } else if(last_interrupt_time_pin0 != 0) { // pin 0 is low and this is not the first interrupt
+            advance(angle2steps((interrupt_time-last_interrupt_time_pin0)/10.));
         }
         last_interrupt_time_pin0 = interrupt_time;
-    }
-    // Add interrupt handling for home and step size button here.
-        
+    }        
     last_value_mask     = value_mask;
 }
 
@@ -149,7 +154,7 @@ void display_usage() {
 
 void parse_arguments(int argc, char **argv) {
     int c;
-    double avalue = 5; //default value for angle per interrupt
+    double avalue = 5; //default angle to advance by per interrupt
     int option_index = 0;
 
     while (1)
@@ -300,6 +305,7 @@ int main(int argc, char **argv) {
     // Disconnect from brickd
     ipcon_destroy(&ipcon);
 
-    fflush(stdout);
+    print_stats();
+    printf("\n");
     return 0;
 }
