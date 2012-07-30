@@ -26,6 +26,8 @@ ROADMAP:
   + Use sensible folder structure and improve makefile
   + Use time of TTL pulse to determine step width
   + Regain platform independance (move away from ncurses)
+  o Use position of stepper provided by bricklet to go home
+  o Move configuration variables to config file
   o Add and LCD, pysical buttons for home and step size and implement a 
     stand-alone solution (maybe…)
   o check for integer overflows on interrupts (unlikely to occur but who 
@@ -37,6 +39,7 @@ ROADMAP:
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <time.h>
 
 #include "ip_connection.h"
 #include "bricklet_io4.h"
@@ -267,9 +270,9 @@ int main(int argc, char **argv) {
 
     // Configure stepper driver
     stepper_set_motor_current(&stepper, 750); // 750mA
-    stepper_set_step_mode(&stepper, 8); // 1/8 step mode
-    stepper_set_max_velocity(&stepper, 2000); // Velocity 2000 steps/s
-    stepper_set_speed_ramping(&stepper, 500, 500); // Slow acceleration & deacelleration (500 steps/s^2),     
+    stepper_set_step_mode(&stepper, step_mode); // 1/8 step mode
+    stepper_set_max_velocity(&stepper, 1000); // Velocity 2000 steps/s
+    stepper_set_speed_ramping(&stepper, 250, 250); // Slow acceleration & deacelleration (500 steps/s^2),     
     stepper_enable(&stepper);
 
   	// Enable interrupt on pin 0 
@@ -302,6 +305,8 @@ int main(int argc, char **argv) {
             set_home();
     }
     
+        
+    stepper_disable(&stepper);
     // Disconnect from brickd
     ipcon_destroy(&ipcon);
 
