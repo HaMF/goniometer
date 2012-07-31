@@ -271,11 +271,13 @@ int main(int argc, char **argv) {
     // Configure stepper driver
     stepper_set_motor_current(&stepper, 750); // 750mA
     stepper_set_step_mode(&stepper, step_mode); // 1/8 step mode
-    stepper_set_max_velocity(&stepper, 1000); // Velocity 2000 steps/s
-    stepper_set_speed_ramping(&stepper, 250, 250); // Slow acceleration & deacelleration (500 steps/s^2),     
+    stepper_set_max_velocity(&stepper, 1000); // Velocity 1000 steps/s
+    stepper_set_speed_ramping(&stepper, 250, 250); // Slow acceleration & deacelleration (250 steps/s^2),
+    stepper_set_sync_rect(&stepper, true);// Enable synchronous rectification to allow setting the decay mode
+    stepper_set_decay(&stepper, 20000); // Set decay mode to be considerably slower then "fast decay"
     stepper_enable(&stepper);
 
-  	// Enable interrupt on pin 0 
+    // Enable interrupt on pin 0 
     io4_set_interrupt(&io, 1 << 0); // TTL pulses for advance go on pin 0
   	// io4_set_interrupt(&io, 1 << 1); // home button goes on pin 1
   	// io4_set_interrupt(&io, 1 << 2); // step size button goes on pin 2
