@@ -9,7 +9,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 /* 
 This is a simple script that is intended to be used with the tinkerforge
-(http://tinkerforge.com) stepper brick and the IO4 bricklet.
+stepper brick and the IO4 bricklet. See README.md for more information.
 
   Purpose of the setup is to let a stepper motor advance a certain amount
 of steps everytime a TTL pulse is registered at pin 0 of the IO4 bricklet.
