@@ -40,6 +40,7 @@ ROADMAP:
 #include <unistd.h>
 #include <getopt.h>
 #include <time.h>
+#include <math.h>
 
 #include "ip_connection.h"
 #include "bricklet_io4.h"
@@ -65,7 +66,7 @@ int last_interrupt_time_pin0 = 0;
 
 
 int angle2steps(float angle) {
-    int steps = angle * steps_per_revolution / 360 * step_mode * gear_ratio;
+    int steps = floor(angle * steps_per_revolution / 360. * step_mode * gear_ratio + 0.5);
 
     return steps;
 }
@@ -272,9 +273,9 @@ int main(int argc, char **argv) {
     stepper_set_motor_current(&stepper, 750); // 750mA
     stepper_set_step_mode(&stepper, step_mode); // 1/8 step mode
     stepper_set_max_velocity(&stepper, 1000); // Velocity 1000 steps/s
-    stepper_set_speed_ramping(&stepper, 250, 250); // Slow acceleration & deacelleration (250 steps/s^2),
+    stepper_set_speed_ramping(&stepper, 500, 500); // Slow acceleration & deacelleration (500 steps/s^2),
     stepper_set_sync_rect(&stepper, true);// Enable synchronous rectification to allow setting the decay mode
-    stepper_set_decay(&stepper, 20000); // Set decay mode to be considerably slower then "fast decay"
+    stepper_set_decay(&stepper, 40000); // Set decay mode to be considerably slower then "fast decay"
     stepper_enable(&stepper);
 
     // Enable interrupt on pin 0 
