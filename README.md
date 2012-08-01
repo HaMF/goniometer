@@ -80,6 +80,24 @@ operating systems. It needs to be downloaded and installed from the
 [tinkerforge website's download section][5]. It will then run run as a
 daemon in the background.
 
+### Getting started with MinGW
+The unexperienced MinGW user might find the following steps to set up and use
+MinGW on Windows helpful:
+
+  * Download the newest [installer for MinGW][7]
+  * Execute the downloaded setup. Click yes, "I agree" and next unti...
+  * ... you can choose the components. Choose at least the C/C++ compiler
+    and MSYS Basic System.  Finish the installer.
+  * Launch the MinGW shell (You should find a shortcut in the start menu.)
+  * Go to the folder where you downloaded the sourcecode to. Do this by
+    typing `cd /C/User/.../goniometer`. Note that a normal slash
+    ( ´/´ ) instead of a backslash ( ´\´ ) is used and that the drive C is
+    denoted by ´/C/´ instead of ´C:\´. Hint: Hit TAB to autocomplete the
+    folder.
+  * Type `make` this will compile the code and put the binary in ./bin/
+  * If you whish, you can execute the program right away from the
+    commandline by typing ´bin/goniometer.exe`
+
 
 ## Link to docs
 Further documentation can soon be found in the doc/ directory.
@@ -91,3 +109,4 @@ Further documentation can soon be found in the doc/ directory.
 [4]: http://mingw.org
 [5]: http://www.tinkerforge.com/doc/Downloads.html
 [6]: http://www.tinkerforge.com/doc/Software/API_Bindings.html#api-bindings-c
+[7]: http://sourceforge.net/projects/mingw/files/Installer/mingw-get-inst/
