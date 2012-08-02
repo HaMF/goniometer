@@ -278,6 +278,8 @@ int main(int argc, char **argv) {
     stepper_set_decay(&stepper, 40000); // Set decay mode to be considerably slower then "fast decay"
     stepper_enable(&stepper);
 
+    // Configure pin 0 to be a floating input
+    io4_set_configuration(&io, 1<<0, 'i', false);
     // Enable interrupt on pin 0 
     io4_set_interrupt(&io, 1 << 0); // TTL pulses for advance go on pin 0
   	// io4_set_interrupt(&io, 1 << 1); // home button goes on pin 1
