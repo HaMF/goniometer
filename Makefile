@@ -1,4 +1,4 @@
-TARGET   = goinometer
+TARGET   = goniometer
 CC       = gcc
 CFLAGS   = -std=c99 -Wall -Wno-parentheses -I.
 
