@@ -1,4 +1,4 @@
-# General information
+﻿# General information
 This is a simple script that is intended to be used with the [tinkerforge][1]
 [stepper brick][2] and the [IO4 bricklet][3].
 
@@ -44,7 +44,10 @@ as the precision.
 operate with 1/8 steps which will cause the least vibration but will also
 deliver only a small torque.
 
-The motor shall advance by 5° after every TTL pulse.
+The motor shall advance by 5° after every TTL pulse. Note: This will not 
+be possible with the 200 steps per revolution motor. Instead you will get
+a 4.95deg step (with 1/8 steps) and 5.4 (with full steps). A better choice
+would be e.g. a 9deg step size.
 
 Connect the stepper per USB and to the spectrometer and run
 
@@ -57,7 +60,7 @@ you want to specify the angle to advance after the TTL pulse use
     goniometer -g 2 -s 200 -m 8 -d
 
 This activates the "dynamic mode" where the angle to advance by is given by 
-(pulse length[ms])/10 [°]. So for again a 5 deg step the pulse needs to be
+(pulse length[ms])/100 [°]. So for again a 5 deg step the pulse needs to be
 500ms long.
 
 

@@ -48,8 +48,8 @@ ROADMAP:
 
 #define HOST "localhost"
 #define PORT 4223
-#define IO4_UID "XYZ" // IO4 UID
-#define STEPPER_UID "XYZ" // Stepper UID
+#define IO4_UID "7QU" // IO4 UID
+#define STEPPER_UID "94ANaVvVWoE" // Stepper UID
 
 Stepper stepper;
 IO4 io;
@@ -79,7 +79,7 @@ float steps2angle(int steps) {
 
 
 void print_stats() {
-    printf("\rNumber of steps performed: %3d (%6.2fdeg)", nSteps, steps2angle(nSteps));
+    printf("\rPosition: %6.2fdeg (%3d steps)", steps2angle(nSteps), nSteps);
     fflush(stdout);
 }
 
@@ -129,14 +129,20 @@ void set_home() {
 
 
 void dispatch_interrupts(uint8_t interrupt_mask, uint8_t value_mask) {
-    int interrupt_time = time(NULL);
+    clock_t interrupt_time = clock() / (CLOCKS_PER_SEC / 1000);
     if((1<<0) & interrupt_mask) { // interrupt on pin 0
-        if(interrupt_mask & value_mask == 1) { // pin 0 is high
+        if((interrupt_mask & value_mask) == 1) { // pin 0 is high
             if( ! dynamic_flag) {
                 advance(nStepsPerInterrupt);
             }
-        } else if(last_interrupt_time_pin0 != 0) { // pin 0 is low and this is not the first interrupt
-            advance(angle2steps((interrupt_time-last_interrupt_time_pin0)/10.));
+        } else if(last_interrupt_time_pin0 != 0 && dynamic_flag) { // pin 0 is low, dynamic mode is set and this is not the first interrupt
+            double angle_to_advance = (interrupt_time-last_interrupt_time_pin0)/100.;
+            if(angle_to_advance < 0) {
+                printf(". Pulse length < 100ms");  // somehow pulses < 100ms are not recognized correctly
+                angle_to_advance = 0;
+            }
+            advance(angle2steps(angle_to_advance));
+            printf(". Last step size: %.2fdeg", steps2angle(angle2steps(angle_to_advance)));
         }
         last_interrupt_time_pin0 = interrupt_time;
     }        
