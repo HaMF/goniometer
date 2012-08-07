@@ -38,6 +38,7 @@ ROADMAP:
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <windows.h>
 #include <getopt.h>
 #include <time.h>
 #include <math.h>
@@ -45,6 +46,8 @@ ROADMAP:
 #include "ip_connection.h"
 #include "bricklet_io4.h"
 #include "brick_stepper.h"
+
+#include "io_helpers.c"
 
 #define HOST "localhost"
 #define PORT 4223
@@ -56,14 +59,16 @@ IO4 io;
 
 int nSteps = 0;         // number of performed steps since last home position
 int nStepsPerInterrupt; // default is set to an equivalent of 5deg when parsing arguments
-float gear_ratio = 2;   // gear ratio > 1 means motor gear has less teeth
+float gear_ratio = 3;   // gear ratio > 1 means motor gear has less teeth
 float steps_per_revolution = 200;  // 200 -> 1 full step = 1.8 deg
-int step_mode = 1;	// perform 1/1,1/2,1/4 or 1/8 steps. 1/8 is highest precission but lowest torque
+int step_mode = 8;	// perform 1/1,1/2,1/4 or 1/8 steps. 1/8 is highest precission but lowest torque
+int sweep_time = 0; // sweep time of the experiment in seconds (used for -t)
+int nExperiments = 0;
 
-int dynamic_flag, record_flag;
+int dynamic_flag, record_flag, triggered_flag;
 int last_value_mask;
 int last_interrupt_time_pin0 = 0;
-
+bool position_reached = false;
 
 int angle2steps(float angle) {
     int steps = floor(angle * steps_per_revolution / 360. * step_mode * gear_ratio + 0.5);
@@ -78,18 +83,12 @@ float steps2angle(int steps) {
 }
 
 
-void print_stats() {
-    printf("\rPosition: %6.2fdeg (%3d steps)", steps2angle(nSteps), nSteps);
-    fflush(stdout);
-}
-
-
 bool is_motor_ready() {
     int32_t rem_steps = 0;
-    stepper_get_remaining_steps(&stepper, &rem_steps) ;
+    stepper_get_remaining_steps(&stepper, &rem_steps);
     if(rem_steps != 0) {
-        printf("\rInterrupt request ignored because motor was still running\n");
-        print_stats();
+        //printf("\rInterrupt request ignored because motor was still running\n");
+        //print_stats(nSteps);
         return false;
     } else {
         return true;
@@ -100,11 +99,13 @@ bool is_motor_ready() {
 void advance(int steps) {
     if( ! is_motor_ready())
       return;
+    
+    position_reached = false;
       
     stepper_set_steps(&stepper, steps); // Drive 100 steps forward
     nSteps += steps;
     
-    print_stats();
+    print_stats(nSteps);
 }
 
 
@@ -116,7 +117,7 @@ void go_home() {
     stepper_set_steps(&stepper, -nSteps);
     nSteps = 0;
     
-    print_stats();
+    print_stats(nSteps);
 }
 
 
@@ -124,7 +125,7 @@ void set_home() {
     printf("\rSet current position (%.2fdeg) as new home ...\n", steps2angle(nSteps));
     nSteps = 0;
     
-    print_stats();
+    print_stats(nSteps);
 }
 
 
@@ -150,18 +151,6 @@ void dispatch_interrupts(uint8_t interrupt_mask, uint8_t value_mask) {
 }
 
 
-void display_usage() {
-    printf("This program drives a stepper motor when a TTL pulse is registered on port 0 of a tinkerforge IO4 bricklet.\n\n");
-    printf("Command line arguments:\n");
-    printf("    -a,  --angle       Angle by wich motor advances on interrupt (default: 5)\n");
-    printf("    -g,  --gear-ratio  Gear ratio between motor and sample rod (default: 2)\n");
-    printf("    -s,  --steps-per-revolution Number of full-width steps needed for one revolution of the motor rod (default:200)\n");
-    printf("    -m,  --step-mode   Perform 1/n steps. Note 1/1 steps give the biggest torque. (n = (1,2,4,8); default: 1)\n");
-    printf("    -d,  --dynamic     Dynamic mode: --angle is ignored and instead TTL pulse length is used. 10ms = 0.1deg\n");
-    printf("    -r,  --record      Record the angular position after every interrupt\n");
-}
-
-
 void parse_arguments(int argc, char **argv) {
     int c;
     double avalue = 5; //default angle to advance by per interrupt
@@ -173,14 +162,17 @@ void parse_arguments(int argc, char **argv) {
          {
            {"dynamic",    no_argument, &dynamic_flag, 1},
            {"record",     no_argument, &record_flag,  1},
+           {"trigger",     no_argument, &triggered_flag,  1},
            {"angle",      required_argument, NULL, 'a'},
            {"gear-ratio", required_argument, NULL, 'g'},
            {"steps-per-revolution", required_argument, NULL, 's'},
            {"step-mode",  required_argument, NULL, 'm'},
+           {"sweep-time",  required_argument, NULL, 'w'},
+           {"n-aquisitions",  required_argument, NULL, 'n'},
            {NULL, 0, NULL, 0}
          };
 
-       c = getopt_long (argc, argv, "dra:g:s:m:?h",
+       c = getopt_long (argc, argv, "tdra:g:s:m:n:w:?h",
                         long_options, &option_index);
 
        if (c == -1)
@@ -227,11 +219,30 @@ void parse_arguments(int argc, char **argv) {
                exit(1);
            }
            break;
+         case 'w':
+           if( ! strtod(optarg, NULL) )
+           {
+             printf ("option -w requires an integer as value\n");
+             exit(1);
+           }
+           sweep_time = strtod(optarg, NULL);
+           break;
+         case 'n':
+           if( ! strtod(optarg, NULL) )
+           {
+             printf ("option -n requires an integer as value\n");
+             exit(1);
+           }
+           n_aquisitions = strtod(optarg, NULL);
+           break;
          case 'd':
            dynamic_flag = 1;
            break;
          case 'r':
            record_flag = 1;
+           break;
+         case 't':
+           triggered_flag = 1;
            break;
          case 'h':
          case '?':
@@ -241,13 +252,30 @@ void parse_arguments(int argc, char **argv) {
            break;
          }
       }
-          
+    
+    if(dynamic_flag && triggered_flag)
+    {
+       printf("using triggered-mode (-t) and dynamic-mode (-d) at the same time is useless\n");
+       exit(1);
+    }
+    
+    if(triggered_flag && sweep_time == 0)
+    {
+      printf("provide a sweep time of the experiment when using triggered mode \n");
+      exit(1);
+    }
+                      
     nStepsPerInterrupt = angle2steps(avalue);
 }
 
 
+void sleep(int seconds) {
+     Sleep(seconds * 1000);
+}
+
 int main(int argc, char **argv) {
     int c;
+    bool first_run = true;
     
     parse_arguments(argc, argv);
    
@@ -284,6 +312,47 @@ int main(int argc, char **argv) {
     stepper_set_decay(&stepper, 40000); // Set decay mode to be considerably slower then "fast decay"
     stepper_enable(&stepper);
 
+    if(triggered_flag) {
+        printf("Trigger mode: This programm will trigger the aquisition each %dsec for %d times.\n", sweep_time, n_experiments);
+        printf("========================================");
+        printf("Before each trigger the motor will advance by %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
+        printf("Gear ratio is set to %f \n", gear_ratio);
+                  
+        printf("Setting pin 1 to low.\n");                      
+        io4_set_configuration(&io, 1<<1, 'o', false);  // set output pin to low to begin with
+        
+        while(n_aquisitions > 0) {
+            // advance to next position
+            if( ! first_run) {
+                advance(nStepsPerInterrupt);
+                printf("Advancing...");
+                while( ! is_motor_ready()) {
+                    sleep(1);
+                    printf(".");
+                }
+            } else {
+                first_run = false;
+            }
+            printf("\n");
+            
+            // output a 1 sec pulse to pin 1
+            io4_set_configuration(&io, 1<<1, 'o', true);
+            sleep(1);
+            io4_set_configuration(&io, 1<<1, 'o', false);
+            printf("Triggering experiment...\n");
+            
+            // wait for experiment to finish
+            sleep(sweep_time);
+            
+            --n_aquisitions;
+        }
+        
+        stepper_disable(&stepper);
+        // Disconnect from brickd
+        ipcon_destroy(&ipcon);
+        
+        exit(0);
+    }    
     // Configure pin 0 to be a floating input
     io4_set_configuration(&io, 1<<0, 'i', false);
     // Enable interrupt on pin 0 
@@ -298,6 +367,7 @@ int main(int argc, char **argv) {
     if(dynamic_flag) {
         printf("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
         printf(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
+        printf("========================================");
     } else {
         printf("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
     }
@@ -321,7 +391,7 @@ int main(int argc, char **argv) {
     // Disconnect from brickd
     ipcon_destroy(&ipcon);
 
-    print_stats();
+    print_stats(nSteps);
     printf("\n");
     return 0;
 }
