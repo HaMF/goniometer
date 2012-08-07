@@ -47,8 +47,6 @@ ROADMAP:
 #include "bricklet_io4.h"
 #include "brick_stepper.h"
 
-#include "io_helpers.c"
-
 #define HOST "localhost"
 #define PORT 4223
 #define IO4_UID "7QU" // IO4 UID
@@ -63,12 +61,13 @@ float gear_ratio = 3;   // gear ratio > 1 means motor gear has less teeth
 float steps_per_revolution = 200;  // 200 -> 1 full step = 1.8 deg
 int step_mode = 8;	// perform 1/1,1/2,1/4 or 1/8 steps. 1/8 is highest precission but lowest torque
 int sweep_time = 0; // sweep time of the experiment in seconds (used for -t)
-int nExperiments = 0;
-
+int n_aquisitions = 0;
+    
 int dynamic_flag, record_flag, triggered_flag;
 int last_value_mask;
 int last_interrupt_time_pin0 = 0;
 bool position_reached = false;
+
 
 int angle2steps(float angle) {
     int steps = floor(angle * steps_per_revolution / 360. * step_mode * gear_ratio + 0.5);
@@ -76,10 +75,32 @@ int angle2steps(float angle) {
     return steps;
 }
 
+
 float steps2angle(int steps) {
     float angle = steps / steps_per_revolution * 360 / step_mode / gear_ratio;
         
     return angle;
+}
+
+
+void print_stats(int nSteps) {
+    printf("\rPosition: %6.2fdeg (%3d steps)", steps2angle(nSteps), nSteps);
+    fflush(stdout);
+}
+
+
+void display_usage() {
+    printf("This program drives a stepper motor when a TTL pulse is registered on port 0 of a tinkerforge IO4 bricklet.\n\n");
+    printf("Command line arguments:\n");
+    printf("    -a,  --angle       Angle by wich motor advances on interrupt (default: 5)\n");
+    printf("    -g,  --gear-ratio  Gear ratio between motor and sample rod (default: 2)\n");
+    printf("    -s,  --steps-per-revolution Number of full-width steps needed for one revolution of the motor rod (default:200)\n");
+    printf("    -m,  --step-mode   Perform 1/n steps. Note 1/1 steps give the biggest torque. (n = (1,2,4,8); default: 1)\n");
+    printf("    -d,  --dynamic     Dynamic mode: --angle is ignored and instead TTL pulse length is used. 10ms = 0.1deg\n");
+    printf("    -r,  --record      Record the angular position after every interrupt\n");
+    printf("    -t,  --trigger     Trigger spectrometer instead of being triggered by it (for CW measurements)\n");
+    printf("    -w,  --sweep-time  Time spectrometer needs for field sweep and to ready for the next one (with -t)\n");
+    printf("    -n,  --n-aquisitions  Number of field sweeps/aquisitions (with -t)\n");
 }
 
 
@@ -259,9 +280,9 @@ void parse_arguments(int argc, char **argv) {
        exit(1);
     }
     
-    if(triggered_flag && sweep_time == 0)
+    if(triggered_flag && (sweep_time == 0 || n_aquisitions ==0))
     {
-      printf("provide a sweep time of the experiment when using triggered mode \n");
+      printf("provide a sweep time of the experiment (-w) and a number of aquisitions (-n) when using triggered mode \n");
       exit(1);
     }
                       
@@ -313,9 +334,9 @@ int main(int argc, char **argv) {
     stepper_enable(&stepper);
 
     if(triggered_flag) {
-        printf("Trigger mode: This programm will trigger the aquisition each %dsec for %d times.\n", sweep_time, n_experiments);
-        printf("========================================");
-        printf("Before each trigger the motor will advance by %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
+        printf("Trigger mode: This programm will trigger the aquisition each %dsec for %d times\n", sweep_time, n_aquisitions);
+        printf("========================================\n");
+        printf("Before each trigger the motor will advance by %d (%.2fdeg)\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
         printf("Gear ratio is set to %f \n", gear_ratio);
                   
         printf("Setting pin 1 to low.\n");                      
@@ -367,7 +388,7 @@ int main(int argc, char **argv) {
     if(dynamic_flag) {
         printf("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
         printf(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
-        printf("========================================");
+        printf("========================================/n");
     } else {
         printf("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
     }
