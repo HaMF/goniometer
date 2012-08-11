@@ -37,11 +37,15 @@ ROADMAP:
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <windows.h>
 #include <getopt.h>
 #include <time.h>
 #include <math.h>
+#ifdef __unix__
+# include <unistd.h>
+#elif defined _WIN32 /* Win 32 & 64 bit */
+# include <windows.h>
+#endif
+
 
 #include "ip_connection.h"
 #include "bricklet_io4.h"
@@ -289,10 +293,14 @@ void parse_arguments(int argc, char **argv) {
     nStepsPerInterrupt = angle2steps(avalue);
 }
 
-
-void sleep(int seconds) {
-     Sleep(seconds * 1000);
+void pi_sleep(int seconds) {
+    #ifdef __unix__
+    sleep(seconds);
+    #elif defined _WIN32
+    Sleep(seconds*1000);
+    #endif
 }
+
 
 int main(int argc, char **argv) {
     int c;
@@ -348,7 +356,7 @@ int main(int argc, char **argv) {
                 advance(nStepsPerInterrupt);
                 printf("Advancing...");
                 while( ! is_motor_ready()) {
-                    sleep(1);
+                    pi_sleep(1);
                     printf(".");
                 }
             } else {
@@ -358,12 +366,12 @@ int main(int argc, char **argv) {
             
             // output a 1 sec pulse to pin 1
             io4_set_configuration(&io, 1<<1, 'o', true);
-            sleep(1);
+            pi_sleep(1);
             io4_set_configuration(&io, 1<<1, 'o', false);
             printf("Triggering experiment...\n");
             
             // wait for experiment to finish
-            sleep(sweep_time);
+            pi_sleep(sweep_time);
             
             --n_aquisitions;
         }
