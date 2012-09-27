@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
     // Add IO4 to IP connection
     if(ipcon_add_device(&ipcon, &io) < 0) {
         fprintf(stderr, "Could not connect to IO4 bricklet\n");
-        exit(1);
+        //exit(1);
     }
     
     // Create stepper-device object
