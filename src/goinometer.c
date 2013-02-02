@@ -59,6 +59,8 @@ ROADMAP:
 Stepper stepper;
 IO4 io;
 
+FILE *logfile;
+
 int nSteps = 0;         // number of performed steps since last home position
 int nStepsPerInterrupt; // default is set to an equivalent of 5deg when parsing arguments
 float gear_ratio = 3;   // gear ratio > 1 means motor gear has less teeth
@@ -67,7 +69,7 @@ int step_mode = 8;	// perform 1/1,1/2,1/4 or 1/8 steps. 1/8 is highest precissio
 int sweep_time = 0; // sweep time of the experiment in seconds (used for -t)
 int n_aquisitions = 0;
     
-int dynamic_flag, record_flag, triggered_flag;
+int dynamic_flag, no_record_flag, triggered_flag;
 int last_value_mask;
 int last_interrupt_time_pin0 = 0;
 bool position_reached = false;
@@ -88,7 +90,19 @@ float steps2angle(int steps) {
 
 
 void print_stats(int nSteps) {
+    char strTime[80];
+    time_t t;
+    struct tm *ts;
+
+
+    t = time(NULL);
+    ts = localtime(&t);
+    strftime(strTime, 80, "%Y/%m/%d %H:%M", ts);
+
     printf("\rPosition: %6.2fdeg (%3d steps)", steps2angle(nSteps), nSteps);
+    if( ! no_record_flag) {
+      fprintf(logfile, "[%s] %6.2fdeg\n", strTime, steps2angle(nSteps));
+    }
     fflush(stdout);
 }
 
@@ -101,10 +115,11 @@ void display_usage() {
     printf("    -s,  --steps-per-revolution Number of full-width steps needed for one revolution of the motor rod (default:200)\n");
     printf("    -m,  --step-mode   Perform 1/n steps. Note 1/1 steps give the biggest torque. (n = (1,2,4,8); default: 1)\n");
     printf("    -d,  --dynamic     Dynamic mode: --angle is ignored and instead TTL pulse length is used. 10ms = 0.1deg\n");
-    printf("    -r,  --record      Record the angular position after every interrupt\n");
+    printf("    -r,  --no-record   Do not keep a logfile that records every angle\n");
     printf("    -t,  --trigger     Trigger spectrometer instead of being triggered by it (for CW measurements)\n");
     printf("    -w,  --sweep-time  Time spectrometer needs for field sweep and to ready for the next one (with -t)\n");
     printf("    -n,  --n-aquisitions  Number of field sweeps/aquisitions (with -t)\n");
+
 }
 
 
@@ -127,7 +142,7 @@ void advance(int steps) {
     
     position_reached = false;
       
-    stepper_set_steps(&stepper, steps); // Drive 100 steps forward
+    stepper_set_steps(&stepper, steps);
     nSteps += steps;
     
     print_stats(nSteps);
@@ -186,8 +201,8 @@ void parse_arguments(int argc, char **argv) {
        static struct option long_options[] =
          {
            {"dynamic",    no_argument, &dynamic_flag, 1},
-           {"record",     no_argument, &record_flag,  1},
-           {"trigger",     no_argument, &triggered_flag,  1},
+           {"record",     no_argument, &no_record_flag,  1},
+           {"trigger",    no_argument, &triggered_flag,  1},
            {"angle",      required_argument, NULL, 'a'},
            {"gear-ratio", required_argument, NULL, 'g'},
            {"steps-per-revolution", required_argument, NULL, 's'},
@@ -197,7 +212,7 @@ void parse_arguments(int argc, char **argv) {
            {NULL, 0, NULL, 0}
          };
 
-       c = getopt_long (argc, argv, "tdra:g:s:m:n:w:?h",
+       c = getopt_long(argc, argv, "tdra:g:s:m:n:w:?h",
                         long_options, &option_index);
 
        if (c == -1)
@@ -264,7 +279,7 @@ void parse_arguments(int argc, char **argv) {
            dynamic_flag = 1;
            break;
          case 'r':
-           record_flag = 1;
+           no_record_flag = 1;
            break;
          case 't':
            triggered_flag = 1;
@@ -305,9 +320,24 @@ void pi_sleep(int seconds) {
 int main(int argc, char **argv) {
     int c;
     bool first_run = true;
-    
+
+    char *logfile_mode = "w";
+    char strTime[80];
+    char logfile_name[95];
+    time_t t;
+    struct tm *ts;
+  
     parse_arguments(argc, argv);
-   
+  
+    // Prepare logfile 
+    if( ! no_record_flag) {
+      t = time(NULL);
+      ts = localtime(&t);
+      strftime(strTime, 80, "%Y-%m-%d_%H-%M-%S", ts);
+      sprintf(logfile_name, "goniometer_%s.log", strTime);
+      logfile = fopen(logfile_name, logfile_mode);  
+    }
+
     // Establish IP connection to brick deamon brickd
     IPConnection ipcon;
     if(ipcon_create(&ipcon, HOST, PORT) < 0) {
@@ -346,7 +376,16 @@ int main(int argc, char **argv) {
         printf("========================================\n");
         printf("Before each trigger the motor will advance by %d (%.2fdeg)\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
         printf("Gear ratio is set to %f \n", gear_ratio);
-                  
+
+        if( ! no_record_flag) {
+          printf("Writing logfile to ./%s\n", logfile_name);
+          fprintf(logfile, ";Running in triggered mode\n");
+          fprintf(logfile, "; sweep time = %d\n", sweep_time);
+          fprintf(logfile, "; n_aquisitions = %d\n", n_aquisitions);
+          fprintf(logfile, "; steps_per_interrupt = %d\n", nStepsPerInterrupt);
+          fprintf(logfile, "; gear ratio = %f \n", gear_ratio);
+         }
+
         printf("Setting pin 1 to low.\n");                      
         io4_set_configuration(&io, 1<<1, 'o', false);  // set output pin to low to begin with
         
@@ -397,8 +436,21 @@ int main(int argc, char **argv) {
         printf("Dynamic mode: The angle by which the motor advances corresponds to the TTL pulse length.\n");
         printf(" (Thats the time pin 0 is high. 10ms = 0.1deg). The step size argument will be ignored.\n");
         printf("========================================/n");
+
+        if( ! no_record_flag) {
+          printf("Writing logfile to ./%s\n", logfile_name);
+          fprintf(logfile, ";Running in dynamic mode 10ms = 0.1deg\n");
+          fprintf(logfile, "; gear ratio = %f \n", gear_ratio);
+        }
     } else {
         printf("Steps per interrupt %d (%.2fdeg).\n", nStepsPerInterrupt, steps2angle(nStepsPerInterrupt));
+
+        if( ! no_record_flag) {
+          printf("Writing logfile to ./%s\n", logfile_name);
+          fprintf(logfile, ";Running in key triggered mode\n");
+          fprintf(logfile, "; steps_per_interrupt = %d\n", nStepsPerInterrupt);
+          fprintf(logfile, "; gear ratio = %f \n", gear_ratio);
+        }
     }
     printf("Gear ratio is set to %f \n", gear_ratio);
     printf("Waiting for interrupts on pin 0.\n");
@@ -422,5 +474,9 @@ int main(int argc, char **argv) {
 
     print_stats(nSteps);
     printf("\n");
+    if( ! no_record_flag) {
+      fclose(logfile);
+    }
+
     return 0;
 }
