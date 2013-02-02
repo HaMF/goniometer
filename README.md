@@ -17,7 +17,7 @@ Be sure to have installed and started brickd as described below. Connect the
 brick/bricklet to a free USB port of the computer and start the programm by
 running:
 
-    goniometer [OPTIONS]
+    ./goniometer [OPTIONS]
 
 It will then listen for interrupts on the IO4 bricklets or key presses on
 the computer. Available options are:
@@ -27,7 +27,7 @@ the computer. Available options are:
     -s,   --steps-per-revolution Number of full-width steps needed for one revolution of the motor rod (default:200)
     -m,   --step-mode   Perform 1/n steps. Note 1/1 steps give the biggest torque. (n = (1,2,4,8); default: 1)
     -d,   --dynamic     Dynamic mode: --angle is ignored and instead TTL pulse length is used. 10ms = 0.1deg
-    -r,   --record      Record the angular position after every interrupt
+    -r,   --no-record   Do not the angular position after every interrupt
     -h/-? --help        Show help
 
 For now the Brick/Bricklet UID needs to be specified in the C-code and thus
