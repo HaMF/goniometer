@@ -22,14 +22,14 @@ spectrometer.
 
 ROADMAP:
   + Record positions for every TTL pulse in sensible, simple file format
-  + Add commandline parameters to set gear ratio, step size, …
+  + Add commandline parameters to set gear ratio, step size...
   + Use sensible folder structure and improve makefile
   + Use time of TTL pulse to determine step width
   + Regain platform independance (move away from ncurses)
   o Use position of stepper provided by bricklet to go home
   o Move configuration variables to config file
   o Add and LCD, pysical buttons for home and step size and implement a 
-    stand-alone solution (maybe…)
+    stand-alone solution (maybe)
   o check for integer overflows on interrupts (unlikely to occur but who 
     knows)
 */
