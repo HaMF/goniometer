@@ -68,7 +68,7 @@ This activates the "dynamic mode" where the angle to advance by is given by
 The programm depends only on pthread on POSIX systems and Winsock2 on
 Windows systems. Use of [MinGW][4] for compilation on windows is
 recommended and the provided makefile will work for this environment and
-unix like systems as long as the gcc is installed. So executing 
+unix like systems (including Mac OS/X) as long as gcc is installed. So executing 
 
     make
 
@@ -88,7 +88,7 @@ The unexperienced MinGW user might find the following steps to set up and use
 MinGW on Windows helpful:
 
   * Download the newest [installer for MinGW][7]
-  * Execute the downloaded setup. Click yes, "I agree" and next unti...
+  * Execute the downloaded setup. Click yes, "I agree" and next until...
   * ... you can choose the components. Choose at least the C/C++ compiler
     and MSYS Basic System.  Finish the installer.
   * Launch the MinGW shell (You should find a shortcut in the start menu.)
@@ -103,7 +103,7 @@ MinGW on Windows helpful:
 
 
 ## Link to docs
-Further documentation can soon be found in the doc/ directory.
+Further documentation can be found in the doc/ directory.
 
 
 [1]: http://tinkerforge.com

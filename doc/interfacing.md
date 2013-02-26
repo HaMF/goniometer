@@ -54,5 +54,6 @@ For example use
 
 
 ## Angular dependent pulsed EPR
+Angular dependent pulsed EPR was not automated, the orientation was rather choosen by letting the stepper motor advance (a+[Enter]) or revert(A+[Enter]) a certain number of steps. For the data analysis, the produced log file can be used. The software should be extended at some point to allow changing the step width while the program is running. This way, the stepper motor is not powered down and looses position slightly (if its not at a full step) when restarting the program to change the step width.
 
-...
+In principle, angular studies can be automated using PulseSpel and an external trigger as described above or by triggering the motor from PulseSpel which is not possible for CW.  
