@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Matthias Bolte <matthias@tinkerforge.com>
+ * Copyright (C) 2012-2013 Matthias Bolte <matthias@tinkerforge.com>
  * Copyright (C) 2011 Olaf Lüke <olaf@tinkerforge.com>
  *
  * Redistribution and use in source and binary forms of this file,
@@ -29,246 +29,602 @@
 		#define WIN32_LEAN_AND_MEAN
 	#endif
 	#include <windows.h>
-	#include <winsock2.h>
 #else
-	#include <netinet/in.h> // struct sockaddr_in
 	#include <pthread.h>
 	#include <semaphore.h>
 #endif
 
-#define E_OK 0
-#define E_TIMEOUT -1
-#define E_NO_STREAM_SOCKET -2
-#define E_HOSTNAME_INVALID -3
-#define E_NO_CONNECT -4
-#define E_NO_THREAD -5
-#define E_NOT_ADDED -6
+enum {
+	E_OK = 0,
+	E_TIMEOUT = -1,
+	E_NO_STREAM_SOCKET = -2,
+	E_HOSTNAME_INVALID = -3,
+	E_NO_CONNECT = -4,
+	E_NO_THREAD = -5,
+	E_NOT_ADDED = -6, // unused since v2.0
+	E_ALREADY_CONNECTED = -7,
+	E_NOT_CONNECTED = -8,
+	E_INVALID_PARAMETER = -9, // error response from device
+	E_NOT_SUPPORTED = -10, // error response from device
+	E_UNKNOWN_ERROR_CODE = -11 // error response from device
+};
 
-#define RESPONSE_TIMEOUT 2500
+#ifdef IPCON_EXPOSE_INTERNALS
 
-#define MAX_LENGTH_NAME 40
-
-#define MAX_NUM_DEVICES 256
-#define MAX_NUM_CALLBACKS 256
-#define MAX_PACKET_SIZE 4096
-#define RECV_BUFFER_SIZE (MAX_PACKET_SIZE * 2)
-
-#define BROADCAST_ADDRESS 0
-
-#define FUNCTION_GET_STACK_ID 255
-#define FUNCTION_ENUMERATE 254
-#define FUNCTION_ENUMERATE_CALLBACK 253
-
-struct IPConnection_;
-struct Device_;
-
-typedef void (*enumerate_callback_func_t)(char*, char*, uint8_t, bool);
-typedef int (*device_callback_func_t)(struct Device_*, const unsigned char*);
+typedef struct _Socket Socket;
 
 typedef struct {
-	uint8_t function_id;
-	uint16_t length;
-	char buffer[MAX_PACKET_SIZE];
-} DeviceResponse;
+#ifdef _WIN32
+	CRITICAL_SECTION handle;
+#else
+	pthread_mutex_t handle;
+#endif
+} Mutex;
 
-typedef struct Device_{
-	uint8_t stack_id;
-	uint64_t uid;
-#ifdef _WIN32
-	CRITICAL_SECTION write_mutex;
-	HANDLE response_semaphore;
-#else
-	pthread_mutex_t write_mutex;
-	pthread_cond_t response_cond;
-	bool response_flag;
-	pthread_mutex_t response_mutex;
-#endif
-	const char *expected_name;
-	char name[MAX_LENGTH_NAME];
-	uint8_t firmware_version[3];
-	uint8_t binding_version[3];
-	DeviceResponse response;
-	void *registered_callbacks[MAX_NUM_CALLBACKS];
-	device_callback_func_t callback_wrappers[MAX_NUM_CALLBACKS];
-	struct IPConnection_ *ipcon;
-} Device;
+void mutex_create(Mutex *mutex);
 
-typedef struct CallbackQueueNode_{
-	struct CallbackQueueNode_ *next;
-	unsigned char buffer[1];
-} CallbackQueueNode;
+void mutex_destroy(Mutex *mutex);
 
-typedef struct IPConnection_{
-	bool thread_receive_flag;
-	bool thread_callback_flag;
+void mutex_lock(Mutex *mutex);
+
+void mutex_unlock(Mutex *mutex);
+
+typedef struct {
 #ifdef _WIN32
-	SOCKET s;
-	HANDLE thread_receive;
-	HANDLE thread_callback;
-	DWORD thread_id_receive;
-	DWORD thread_id_callback;
+	HANDLE handle;
 #else
-	int fd;
-	pthread_t thread_receive;
-	pthread_t thread_callback;
+	pthread_cond_t condition;
+	pthread_mutex_t mutex;
+	bool flag;
 #endif
-	struct sockaddr_in server;
-	Device *devices[MAX_NUM_DEVICES];
-	Device *pending_add_device;
+} Event;
+
+typedef struct {
 #ifdef _WIN32
-	CRITICAL_SECTION add_device_mutex;
+	HANDLE handle;
 #else
-	pthread_mutex_t add_device_mutex;
+	sem_t object;
+	sem_t *pointer;
 #endif
-	enumerate_callback_func_t enumerate_callback;
-	CallbackQueueNode *callback_queue_head;
-	CallbackQueueNode *callback_queue_tail;
+} Semaphore;
+
+typedef void (*ThreadFunction)(void *opaque);
+
+typedef struct {
 #ifdef _WIN32
-	CRITICAL_SECTION callback_queue_mutex;
-	HANDLE callback_queue_semaphore;
+	HANDLE handle;
+	DWORD id;
 #else
-	pthread_mutex_t callback_queue_mutex;
-	sem_t callback_queue_semaphore_object;
-	sem_t *callback_queue_semaphore;
+	pthread_t handle;
 #endif
-} IPConnection;
+	ThreadFunction function;
+	void *opaque;
+} Thread;
+
+typedef struct {
+	Mutex mutex;
+	int used;
+	int allocated;
+	uint32_t *keys;
+	void **values;
+} Table;
+
+typedef struct _QueueItem {
+	struct _QueueItem *next;
+	int kind;
+	void *data;
+	int length;
+} QueueItem;
+
+typedef struct {
+	Mutex mutex;
+	Semaphore semaphore;
+	QueueItem *head;
+	QueueItem *tail;
+} Queue;
 
 #if defined _MSC_VER || defined __BORLANDC__
 	#pragma pack(push)
 	#pragma pack(1)
 	#define ATTRIBUTE_PACKED
 #elif defined __GNUC__
-	#define ATTRIBUTE_PACKED __attribute__((packed))
+	#ifdef _WIN32
+		// workaround struct packing bug in GCC 4.7 on Windows
+		// http://gcc.gnu.org/bugzilla/show_bug.cgi?id=52991
+		#define ATTRIBUTE_PACKED __attribute__((gcc_struct, packed))
+	#else
+		#define ATTRIBUTE_PACKED __attribute__((packed))
+	#endif
 #else
 	#error unknown compiler, do not know how to enable struct packing
 #endif
 
 typedef struct {
-	uint8_t stack_id;
+	uint32_t uid;
+	uint8_t length;
 	uint8_t function_id;
-	uint16_t length;
-	uint64_t uid;
-} ATTRIBUTE_PACKED GetStackID;
+	uint8_t sequence_number_and_options;
+	uint8_t error_code_and_future_use;
+} ATTRIBUTE_PACKED PacketHeader;
 
 typedef struct {
-	uint8_t stack_id;
-	uint8_t function_id;
-	uint16_t length;
-	uint64_t device_uid;
-	uint8_t device_firmware_version[3];
-	char device_name[MAX_LENGTH_NAME];
-	uint8_t device_stack_id;
-} ATTRIBUTE_PACKED GetStackIDReturn;
-
-typedef struct {
-	uint8_t stack_id;
-	uint8_t function_id;
-	uint16_t length;
-} ATTRIBUTE_PACKED Enumerate;
-
-typedef struct {
-	uint8_t stack_id;
-	uint8_t function_id;
-	uint16_t length;
-	uint64_t device_uid;
-	char device_name[MAX_LENGTH_NAME];
-	uint8_t device_stack_id;
-	bool is_new;
-} ATTRIBUTE_PACKED EnumerateReturn;
+	PacketHeader header;
+	uint8_t payload[64];
+	uint8_t optional_data[8];
+} ATTRIBUTE_PACKED Packet;
 
 #if defined _MSC_VER || defined __BORLANDC__
 	#pragma pack(pop)
 #endif
 #undef ATTRIBUTE_PACKED
 
-#ifdef _WIN32
-void ipcon_mutex_lock(CRITICAL_SECTION *mutex);
-void ipcon_mutex_unlock(CRITICAL_SECTION *mutex);
-#else
-void ipcon_mutex_lock(pthread_mutex_t *mutex);
-void ipcon_mutex_unlock(pthread_mutex_t *mutex);
+#endif // IPCON_EXPOSE_INTERNALS
+
+typedef struct _IPConnection IPConnection;
+typedef struct _IPConnectionPrivate IPConnectionPrivate;
+typedef struct _Device Device;
+typedef struct _DevicePrivate DevicePrivate;
+
+#ifdef IPCON_EXPOSE_INTERNALS
+
+typedef struct _CallbackContext CallbackContext;
+
+#endif
+
+typedef void (*EnumerateCallbackFunction)(const char *uid,
+                                          const char *connected_uid,
+                                          char position,
+                                          uint8_t hardware_version[3],
+                                          uint8_t firmware_version[3],
+                                          uint16_t device_identifier,
+                                          uint8_t enumeration_type,
+                                          void *user_data);
+typedef void (*ConnectedCallbackFunction)(uint8_t connect_reason,
+                                          void *user_data);
+typedef void (*DisconnectedCallbackFunction)(uint8_t disconnect_reason,
+                                             void *user_data);
+
+#ifdef IPCON_EXPOSE_INTERNALS
+
+typedef void (*CallbackWrapperFunction)(DevicePrivate *device_p, Packet *packet);
+
 #endif
 
 /**
- * \ingroup IPConnection
- *
- * Creates an IP connection to the Brick Daemon with the given \c host
- * and \c port. With the IP connection itself it is possible to enumerate the
- * available devices. Other then that it is only used to add Bricks and
- * Bricklets to the connection.
+ * \internal
  */
-int ipcon_create(IPConnection *ipcon, const char *host, const int port);
+struct _Device {
+	DevicePrivate *p;
+};
+
+#ifdef IPCON_EXPOSE_INTERNALS
+
+#define DEVICE_NUM_FUNCTION_IDS 256
+
+/**
+ * \internal
+ */
+struct _DevicePrivate {
+	uint32_t uid;
+
+	IPConnectionPrivate *ipcon_p;
+
+	uint8_t api_version[3];
+
+	Mutex request_mutex;
+
+	uint8_t expected_response_function_id; // protected by request_mutex
+	uint8_t expected_response_sequence_number; // protected by request_mutex
+	Mutex response_mutex;
+	Packet response_packet; // protected by response_mutex
+	Event response_event;
+	int response_expected[DEVICE_NUM_FUNCTION_IDS];
+
+	void *registered_callbacks[DEVICE_NUM_FUNCTION_IDS];
+	void *registered_callback_user_data[DEVICE_NUM_FUNCTION_IDS];
+	CallbackWrapperFunction callback_wrappers[DEVICE_NUM_FUNCTION_IDS];
+};
+
+/**
+ * \internal
+ */
+enum {
+	DEVICE_RESPONSE_EXPECTED_INVALID_FUNCTION_ID = 0,
+	DEVICE_RESPONSE_EXPECTED_ALWAYS_TRUE, // getter
+	DEVICE_RESPONSE_EXPECTED_ALWAYS_FALSE, // callback
+	DEVICE_RESPONSE_EXPECTED_TRUE, // setter
+	DEVICE_RESPONSE_EXPECTED_FALSE // setter, default
+};
+
+/**
+ * \internal
+ */
+void device_create(Device *device, const char *uid,
+                   IPConnectionPrivate *ipcon_p, uint8_t api_version_major,
+                   uint8_t api_version_minor, uint8_t api_version_release);
+
+/**
+ * \internal
+ */
+void device_destroy(Device *device);
+
+/**
+ * \internal
+ */
+int device_get_response_expected(DevicePrivate *device_p, uint8_t function_id,
+                                 bool *ret_response_expected);
+
+/**
+ * \internal
+ */
+int device_set_response_expected(DevicePrivate *device_p, uint8_t function_id,
+                                 bool response_expected);
+
+/**
+ * \internal
+ */
+int device_set_response_expected_all(DevicePrivate *device_p, bool response_expected);
+
+/**
+ * \internal
+ */
+void device_register_callback(DevicePrivate *device_p, uint8_t id, void *callback,
+                              void *user_data);
+
+/**
+ * \internal
+ */
+int device_get_api_version(DevicePrivate *device_p, uint8_t ret_api_version[3]);
+
+/**
+ * \internal
+ */
+int device_send_request(DevicePrivate *device_p, Packet *request, Packet *response);
+
+#endif // IPCON_EXPOSE_INTERNALS
 
 /**
  * \ingroup IPConnection
  *
- * This function registers a callback with the signature:
- *
- * \code
- * void callback(char *uid, char *name, uint8_t stack_id, bool is_new)
- * \endcode
- *
- * that receives four parameters:
- *
- * - \c uid: The UID of the device.
- * - \c name: The name of the device (includes "Brick" or "Bricklet" and a version number).
- * - \c stack_id: The stack ID of the device (you can find out the position in a stack with this).
- * - \c is_new: True if the device is added, false if it is removed.
- *
- * There are three different possibilities for the callback to be called.
- * Firstly, the callback is called with all currently available devices in the
- * IP connection (with \c is_new true). Secondly, the callback is called if
- * a new Brick is plugged in via USB (with \c is_new true) and lastly it is
- * called if a Brick is unplugged (with \c is_new false).
- *
- * It should be possible to implement "plug 'n play" functionality with this
- * (as is done in Brick Viewer).
+ * Possible IDs for ipcon_register_callback.
  */
-void ipcon_enumerate(IPConnection *ipcon, enumerate_callback_func_t callback);
+enum {
+	IPCON_CALLBACK_ENUMERATE = 253,
+	IPCON_CALLBACK_CONNECTED = 0,
+	IPCON_CALLBACK_DISCONNECTED = 1
+};
 
 /**
  * \ingroup IPConnection
  *
- * Adds a device (Brick or Bricklet) to the IP connection. Every device
- * has to be added to an IP connection before it can be used. Examples for
- * this can be found in the API documentation for every Brick and Bricklet.
+ * Possible values for enumeration_type parameter of EnumerateCallback.
  */
-int ipcon_add_device(IPConnection *ipcon, Device *device);
+enum {
+	IPCON_ENUMERATION_TYPE_AVAILABLE = 0,
+	IPCON_ENUMERATION_TYPE_CONNECTED = 1,
+	IPCON_ENUMERATION_TYPE_DISCONNECTED = 2
+};
 
 /**
  * \ingroup IPConnection
  *
- * Joins the threads of the IP connection. The call will block until the
- * IP connection is destroyed (see {@link ipcon_destroy}).
+ * Possible values for connect_reason parameter of ConnectedCallback.
  */
-void ipcon_join_thread(IPConnection *ipcon);
+enum {
+	IPCON_CONNECT_REASON_REQUEST = 0,
+	IPCON_CONNECT_REASON_AUTO_RECONNECT = 1
+};
 
 /**
  * \ingroup IPConnection
  *
- * Destroys the IP connection. The socket to the Brick Daemon will be closed
- * and the threads of the IP connection terminated.
+ * Possible values for disconnect_reason parameter of DisconnectedCallback.
+ */
+enum {
+	IPCON_DISCONNECT_REASON_REQUEST = 0,
+	IPCON_DISCONNECT_REASON_ERROR = 1,
+	IPCON_DISCONNECT_REASON_SHUTDOWN = 2
+};
+
+/**
+ * \ingroup IPConnection
+ *
+ * Possible return values of ipcon_get_connection_state.
+ */
+enum {
+	IPCON_CONNECTION_STATE_DISCONNECTED = 0,
+	IPCON_CONNECTION_STATE_CONNECTED = 1,
+	IPCON_CONNECTION_STATE_PENDING = 2 // auto-reconnect in progress
+};
+
+/**
+ * \internal
+ */
+struct _IPConnection {
+	IPConnectionPrivate *p;
+};
+
+#ifdef IPCON_EXPOSE_INTERNALS
+
+#define IPCON_NUM_CALLBACK_IDS 256
+
+/**
+ * \internal
+ */
+struct _IPConnectionPrivate {
+#ifdef _WIN32
+	bool wsa_startup_done; // protected by socket_mutex
+#endif
+
+	char *host;
+	uint16_t port;
+
+	uint32_t timeout; // in msec
+
+	bool auto_reconnect;
+	bool auto_reconnect_allowed;
+	bool auto_reconnect_pending;
+
+	Mutex sequence_number_mutex;
+	uint8_t next_sequence_number; // protected by sequence_number_mutex
+
+	Table devices;
+
+	void *registered_callbacks[IPCON_NUM_CALLBACK_IDS];
+	void *registered_callback_user_data[IPCON_NUM_CALLBACK_IDS];
+
+	Mutex socket_mutex;
+	Socket *socket; // protected by socket_mutex
+	uint64_t socket_id; // protected by socket_mutex
+
+	bool receive_flag;
+	Thread receive_thread; // protected by socket_mutex
+
+	CallbackContext *callback;
+
+	bool disconnect_probe_flag;
+	Thread disconnect_probe_thread; // protected by socket_mutex
+	Event disconnect_probe_event;
+
+	Semaphore wait;
+};
+
+#endif // IPCON_EXPOSE_INTERNALS
+
+/**
+ * \ingroup IPConnection
+ *
+ * Creates an IP Connection object that can be used to enumerate the available
+ * devices. It is also required for the constructor of Bricks and Bricklets.
+ */
+void ipcon_create(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Destroys the IP Connection object. Calls ipcon_disconnect internally.
+ * The connection to the Brick Daemon gets closed and the threads of the
+ * IP Connection are terminated.
  */
 void ipcon_destroy(IPConnection *ipcon);
 
-void ipcon_base58encode(uint64_t value, char *str);
-uint64_t ipcon_base58decode(const char *str);
+/**
+ * \ingroup IPConnection
+ *
+ * Creates a TCP/IP connection to the given \c host and c\ port. The host and
+ * port can point to a Brick Daemon or to a WIFI/Ethernet Extension.
+ *
+ * Devices can only be controlled when the connection was established
+ * successfully.
+ *
+ * Blocks until the connection is established and returns an error code if
+ * there is no Brick Daemon or WIFI/Ethernet Extension listening at the given
+ * host and port.
+ */
+int ipcon_connect(IPConnection *ipcon, const char *host, uint16_t port);
 
-#ifdef _WIN32
-void ipcon_recv_loop(void *param);
-#else
-void *ipcon_recv_loop(void *param);
-#endif
-void ipcon_handle_enumerate(IPConnection *ipcon, const unsigned char *buffer);
-void ipcon_handle_message(IPConnection *ipcon, const unsigned char *buffer);
-void ipcon_device_write(Device *device, const char *buffer, const int length);
-void ipcon_device_create(Device *device, const char *uid);
-void ipcon_handle_add_device(IPConnection *ipcon,
-                             const unsigned char *buffer);
-int ipcon_device_expect_response(Device *device);
+/**
+ * \ingroup IPConnection
+ *
+ * Disconnects the TCP/IP connection from the Brick Daemon or the WIFI/Ethernet
+ * Extension.
+ */
+int ipcon_disconnect(IPConnection *ipcon);
 
-uint8_t ipcon_get_stack_id_from_data(const unsigned char *data);
-uint8_t ipcon_get_function_id_from_data(const unsigned char *data);
-uint16_t ipcon_get_length_from_data(const unsigned char *data);
+/**
+ * \ingroup IPConnection
+ *
+ * Can return the following states:
+ *
+ * - IPCON_CONNECTION_STATE_DISCONNECTED: No connection is established.
+ * - IPCON_CONNECTION_STATE_CONNECTED: A connection to the Brick Daemon or
+ *   the WIFI/Ethernet Extension is established.
+ * - IPCON_CONNECTION_STATE_PENDING: IP Connection is currently trying to
+ *   connect.
+ */
+int ipcon_get_connection_state(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Enables or disables auto-reconnect. If auto-reconnect is enabled,
+ * the IP Connection will try to reconnect to the previously given
+ * host and port, if the connection is lost.
+ *
+ * Default value is *true*.
+ */
+void ipcon_set_auto_reconnect(IPConnection *ipcon, bool auto_reconnect);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Returns *true* if auto-reconnect is enabled, *false* otherwise.
+ */
+bool ipcon_get_auto_reconnect(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Sets the timeout in milliseconds for getters and for setters for which the
+ * response expected flag is activated.
+ *
+ * Default timeout is 2500.
+ */
+void ipcon_set_timeout(IPConnection *ipcon, uint32_t timeout);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Returns the timeout as set by ipcon_set_timeout.
+ */
+uint32_t ipcon_get_timeout(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Broadcasts an enumerate request. All devices will respond with an enumerate
+ * callback.
+ */
+int ipcon_enumerate(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Stops the current thread until ipcon_unwait is called.
+ *
+ * This is useful if you rely solely on callbacks for events, if you want
+ * to wait for a specific callback or if the IP Connection was created in
+ * a thread.
+ *
+ * ipcon_wait and ipcon_unwait act in the same way as "acquire" and "release"
+ * of a semaphore.
+ */
+void ipcon_wait(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Unwaits the thread previously stopped by ipcon_wait.
+ *
+ * ipcon_wait and ipcon_unwait act in the same way as "acquire" and "release"
+ * of a semaphore.
+ */
+void ipcon_unwait(IPConnection *ipcon);
+
+/**
+ * \ingroup IPConnection
+ *
+ * Registers a callback for a given ID.
+ */
+void ipcon_register_callback(IPConnection *ipcon, uint8_t id,
+                             void *callback, void *user_data);
+
+#ifdef IPCON_EXPOSE_INTERNALS
+
+/**
+ * \internal
+ */
+int packet_header_create(PacketHeader *header, uint8_t length,
+                         uint8_t function_id, IPConnectionPrivate *ipcon_p,
+                         DevicePrivate *device_p);
+
+/**
+ * \internal
+ */
+uint8_t packet_header_get_sequence_number(PacketHeader *header);
+
+/**
+ * \internal
+ */
+void packet_header_set_sequence_number(PacketHeader *header,
+                                       uint8_t sequence_number);
+
+/**
+ * \internal
+ */
+uint8_t packet_header_get_response_expected(PacketHeader *header);
+
+/**
+ * \internal
+ */
+void packet_header_set_response_expected(PacketHeader *header,
+                                         uint8_t response_expected);
+
+/**
+ * \internal
+ */
+uint8_t packet_header_get_error_code(PacketHeader *header);
+
+/**
+ * \internal
+ */
+int16_t leconvert_int16_to(int16_t native);
+
+/**
+ * \internal
+ */
+uint16_t leconvert_uint16_to(uint16_t native);
+
+/**
+ * \internal
+ */
+int32_t leconvert_int32_to(int32_t native);
+
+/**
+ * \internal
+ */
+uint32_t leconvert_uint32_to(uint32_t native);
+
+/**
+ * \internal
+ */
+int64_t leconvert_int64_to(int64_t native);
+
+/**
+ * \internal
+ */
+uint64_t leconvert_uint64_to(uint64_t native);
+
+/**
+ * \internal
+ */
+float leconvert_float_to(float native);
+
+/**
+ * \internal
+ */
+int16_t leconvert_int16_from(int16_t little);
+
+/**
+ * \internal
+ */
+uint16_t leconvert_uint16_from(uint16_t little);
+
+/**
+ * \internal
+ */
+int32_t leconvert_int32_from(int32_t little);
+
+/**
+ * \internal
+ */
+uint32_t leconvert_uint32_from(uint32_t little);
+
+/**
+ * \internal
+ */
+int64_t leconvert_int64_from(int64_t little);
+
+/**
+ * \internal
+ */
+uint64_t leconvert_uint64_from(uint64_t little);
+
+/**
+ * \internal
+ */
+float leconvert_float_from(float little);
+
+#endif // IPCON_EXPOSE_INTERNALS
 
 #endif

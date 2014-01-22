@@ -340,27 +340,16 @@ int main(int argc, char **argv) {
 
     // Establish IP connection to brick deamon brickd
     IPConnection ipcon;
-    if(ipcon_create(&ipcon, HOST, PORT) < 0) {
+    if(ipcon_connect(&ipcon, HOST, PORT) < 0) {
         fprintf(stderr, "Could not create IP connection to brickd. Is brickd running?\n");
         exit(1);
     }
 
     // Create IO4-device object
-    io4_create(&io, IO4_UID); 
+    io4_create(&io, IO4_UID, &ipcon); 
 
-    // Add IO4 to IP connection
-    if(ipcon_add_device(&ipcon, &io) < 0) {
-        fprintf(stderr, "Could not connect to IO4 bricklet\n");
-        //exit(1);
-    }
-    
     // Create stepper-device object
-    stepper_create(&stepper, STEPPER_UID); 
-    // Add device to IP connection
-    if(ipcon_add_device(&ipcon, &stepper) < 0) {
-        fprintf(stderr, "Could not connect to stepper brick\n");
-        exit(1);
-    }
+    stepper_create(&stepper, STEPPER_UID, &ipcon); 
 
     // Configure stepper driver
     stepper_set_motor_current(&stepper, 750); // 750mA
@@ -429,7 +418,7 @@ int main(int argc, char **argv) {
   	// io4_set_interrupt(&io, 1 << 2); // step size button goes on pin 2
 
     // Register callback for interrupts
-    io4_register_callback(&io, IO4_CALLBACK_INTERRUPT, (void*)dispatch_interrupts);
+    io4_register_callback(&io, IO4_CALLBACK_INTERRUPT, (void*)dispatch_interrupts, NULL);
 
     
     if(dynamic_flag) {
